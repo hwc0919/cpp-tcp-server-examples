@@ -1,15 +1,16 @@
 #ifndef NETUTILS_H
 #define NETUTILS_H
 
+#include <arpa/inet.h>
 #include <cstring>
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <iostream>
 #include <netinet/in.h>
+#include <stdlib.h>
 #include <sys/epoll.h>
+#include <thread>
+#include <unistd.h>
 
 #define EPOLL_SIZE 1024
 #define LISTEN_QUEUE_SIZE 1024
@@ -59,6 +60,14 @@ void Listen(int i32Sockfd, int i32NQueuedReqs)
     }
 }
 
+void Close(int i32Sockfd)
+{
+    if (close(i32Sockfd) < 0)
+    {
+        perror("Close error");
+    }
+}
+
 void SetNonBlocking(int i32Sockfd)
 {
     int i32Sockopt = fcntl(i32Sockfd, F_GETFD, 0);
@@ -105,6 +114,12 @@ void EpollingProcess(int i32Epfd)
             perror("Epoll_wait error");
             continue;
         }
+
+#ifdef DEBUG
+        std::cout << "Thread " << std::this_thread::get_id() 
+                  << " detects " << i32ReadyFdNum << " events" << std::endl;
+#endif
+
         for (int i = 0; i < i32ReadyFdNum; i++)
         {
             int i32Connfd = atEpEvents[i].data.fd;
@@ -123,12 +138,12 @@ void EpollingProcess(int i32Epfd)
                 {
                     perror("Send error");
                 }
-                close(i32Connfd);
+                Close(i32Connfd);
             }
             else
             {
                 perror("Epoll event error");
-                close(i32Connfd);
+                Close(i32Connfd);
             }
         }
     }

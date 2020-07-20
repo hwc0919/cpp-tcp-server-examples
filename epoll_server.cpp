@@ -1,7 +1,7 @@
 #include "netutils.h"
 #include <sys/sysinfo.h>
-#include <vector>
 #include <thread>
+#include <vector>
 
 int main()
 {
@@ -11,14 +11,18 @@ int main()
     Listen(i32Sockfd, LISTEN_QUEUE_SIZE);
     printf("Listening on %s:%d ...\n", HOST, PORT);
 
-    int maxThreads = get_nprocs() * 2 + 1;
+    int i32NumThreads = get_nprocs() * 2 + 1;
     std::vector<int> vecEpfdPool;
     std::vector<std::thread> vecThreadPool;
-    for (int i = 0; i < maxThreads; ++i)
+    for (int i = 0; i < i32NumThreads; ++i)
     {
         vecEpfdPool.emplace_back(epoll_create(EPOLL_SIZE));
-        vecThreadPool.emplace_back([=] { EpollingProcess(vecEpfdPool[i]); });
+        vecThreadPool.emplace_back([&, i] { EpollingProcess(vecEpfdPool[i]); });
     }
+
+#ifdef DEBUG
+    printf("Enable %d child threads.\n", i32NumThreads);
+#endif
 
     int i32MainEpfd = epoll_create(EPOLL_SIZE);
     struct epoll_event tEvent, atEpEvents[EPOLL_SIZE];
@@ -26,7 +30,7 @@ int main()
     tEvent.events = EPOLLIN;
     if (epoll_ctl(i32MainEpfd, EPOLL_CTL_ADD, i32Sockfd, &tEvent) == -1)
     {
-        perror("epoll_ctl error, message: ");
+        perror("Epoll_ctl error");
         exit(1);
     }
 
@@ -39,9 +43,14 @@ int main()
         int readyFdNum = epoll_wait(i32MainEpfd, atEpEvents, EPOLL_SIZE, -1);
         if (readyFdNum == -1)
         {
-            perror("epoll_wait error, message: ");
+            perror("Epoll_wait error");
             continue;
         }
+
+#ifdef DEBUG
+            printf("Main thread detects %d events.\n", readyFdNum);
+#endif
+
         for (int i = 0; i < readyFdNum; i++)
         {
             int i32Connfd = accept(i32Sockfd, (struct sockaddr *)&tClientAddr, &stClientAddrLen);
@@ -54,21 +63,24 @@ int main()
 
             tEvent.data.fd = i32Connfd;
             tEvent.events = EPOLLIN;
-            if (epoll_ctl(vecEpfdPool[i32DispatchId = (++i32DispatchId % maxThreads)], EPOLL_CTL_ADD, i32Connfd, &tEvent) == -1)
+            if (epoll_ctl(vecEpfdPool[i32DispatchId = (++i32DispatchId % i32NumThreads)], EPOLL_CTL_ADD, i32Connfd, &tEvent) == -1)
             {
                 perror("Epoll_ctl error");
-                close(i32Connfd);
+                Close(i32Connfd);
             }
-            //printf("Receive fd %d, add to thread %d\n", i32Connfd, i32DispatchId);
+#ifdef DEBUG
+            printf("Accept fd %d, add to thread %d\n", i32Connfd, i32DispatchId);
+#endif
         }
     }
 
-    for (auto it = vecThreadPool.begin(); it != vecThreadPool.end(); it++)
+    for (int i = 0; i < i32NumThreads; ++i)
     {
-        if (it->joinable())
+        if (vecThreadPool[i].joinable())
         {
-            it->join();
+            vecThreadPool[i].join();
         }
+        Close(vecEpfdPool[i]);
     }
-    close(i32Sockfd);
+    Close(i32Sockfd);
 }

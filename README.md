@@ -1,5 +1,5 @@
 # cpp-tcp-server-examples
-C++ tcp server examples
+Some fake C++ tcp/http server examples
 
 ## Compile and Run server
 ```sh
