@@ -3,13 +3,20 @@
 #include <thread>
 #include <vector>
 
-int main()
+int main(int argc, char *argv[])
 {
+    u_short port = PORT;
+    const char *host = HOST;
+    if (ParseArgs(argc, argv, &host, &port) < 0)
+    {
+        return -1;
+    }
+
     int i32Sockfd = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     SetNonBlocking(i32Sockfd);
-    Bind(AF_INET, i32Sockfd, HOST, (unsigned short)PORT);
+    Bind(AF_INET, i32Sockfd, host, port);
     Listen(i32Sockfd, LISTEN_QUEUE_SIZE);
-    printf("Listening on %s:%d ...\n", HOST, PORT);
+    printf("Listening on %s:%d ...\n", host, port);
 
     int i32NumThreads = get_nprocs() * 2 + 1;
     std::vector<int> vecEpfdPool;
@@ -48,7 +55,7 @@ int main()
         }
 
 #ifdef DEBUG
-            printf("Main thread detects %d events.\n", readyFdNum);
+        printf("Main thread detects %d events.\n", readyFdNum);
 #endif
 
         for (int i = 0; i < readyFdNum; i++)

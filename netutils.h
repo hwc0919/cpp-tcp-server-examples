@@ -20,6 +20,35 @@
 const char *g_pcszMessage = "HTTP/1.1 200 OK\r\n\r\nHello World\r\n";
 const int g_i32MessageLen = strlen(g_pcszMessage);
 
+int ParseArgs(int argc, char *argv[], const char **host, u_short *port)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "-h") == 0)
+        {
+            if (++i == argc)
+            {
+                break;
+            }
+            *host = argv[i];
+        }
+        else if (strcmp(argv[i], "-p") == 0)
+        {
+            if (++i == argc)
+            {
+                break;
+            }
+            *port = atoi(argv[i]);
+        }
+        else
+        {
+            printf("usage: %s [-h <host>] [-p <port>]", argv[0]);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int Socket(int i32Domain, int i32Type, int i32Protocol)
 {
     int i32Sockfd = socket(i32Domain, i32Type, i32Protocol);
@@ -116,7 +145,7 @@ void EpollingProcess(int i32Epfd)
         }
 
 #ifdef DEBUG
-        std::cout << "Thread " << std::this_thread::get_id() 
+        std::cout << "Thread " << std::this_thread::get_id()
                   << " detects " << i32ReadyFdNum << " events" << std::endl;
 #endif
 
