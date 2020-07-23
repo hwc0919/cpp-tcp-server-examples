@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>
+#include <set>
 #include <stdlib.h>
 #include <sys/epoll.h>
 #include <thread>
@@ -17,10 +18,13 @@
 #define HOST "127.0.0.1"
 #define PORT 8080
 
-const char *g_pcszMessage = "HTTP/1.1 200 OK\r\n\r\nHello World\r\n";
-const int g_i32MessageLen = strlen(g_pcszMessage);
+const char * g_pcszHttpHello = "HTTP/1.1 200 OK\r\n\r\nHello World\r\n";
+const size_t g_stHttpHelloLen = strlen(g_pcszHttpHello);
 
-int ParseArgs(int argc, char *argv[], const char **host, u_short *port)
+const char * g_pcszChatroomHello = "Welcome to chatroom, you are client %d\n";
+char g_szChatroomHelloBuf[64];
+
+int ParseArgs(int argc, char * argv[], const char ** host, u_short * port)
 {
     for (int i = 1; i < argc; ++i)
     {
@@ -62,7 +66,7 @@ int Socket(int i32Domain, int i32Type, int i32Protocol)
     return i32Sockfd;
 }
 
-void Bind(int i32Af, int i32Sockfd, const char *pcszHost, u_short ui16Port)
+void Bind(int i32Af, int i32Sockfd, const char * pcszHost, u_short ui16Port)
 {
     sockaddr_in tSockAddr;
     tSockAddr.sin_family = i32Af;
@@ -112,13 +116,21 @@ void SetNonBlocking(int i32Sockfd)
     }
 }
 
-int HandleRead(int clientFd, char *buf, size_t size)
+/**
+ * A crude implementation. User should guarantee that szBuf can hold the incoming message.
+ */
+ssize_t HandleRead(int i32ClientFd, char * szBuf, size_t stBufSize)
 {
-    int bytesRead = 0;
-    int totBytesRead = 0;
-    while ((bytesRead = read(clientFd, buf, size)) > 0)
+    ssize_t bytesRead = 0;
+    ssize_t totBytesRead = 0;
+    while ((bytesRead = read(i32ClientFd, szBuf + totBytesRead, stBufSize - totBytesRead)) > 0)
     {
         totBytesRead += bytesRead;
+    }
+
+    if (bytesRead == 0)
+    {
+        return 0;
     }
 
     if (bytesRead == -1 && errno != EWOULDBLOCK && errno != EAGAIN)
@@ -145,8 +157,7 @@ void EpollingProcess(int i32Epfd)
         }
 
 #ifdef DEBUG
-        std::cout << "Thread " << std::this_thread::get_id()
-                  << " detects " << i32ReadyFdNum << " events" << std::endl;
+        std::cout << "Thread " << std::this_thread::get_id() << " detects " << i32ReadyFdNum << " events" << std::endl;
 #endif
 
         for (int i = 0; i < i32ReadyFdNum; i++)
@@ -162,8 +173,8 @@ void EpollingProcess(int i32Epfd)
                     perror("Read error");
                 }
 
-                int i32ByteSend = send(i32Connfd, g_pcszMessage, g_i32MessageLen, 0);
-                if (i32ByteSend < 0)
+                ssize_t sstByteSend = send(i32Connfd, g_pcszHttpHello, g_stHttpHelloLen, 0);
+                if (sstByteSend < 0)
                 {
                     perror("Send error");
                 }
@@ -174,6 +185,46 @@ void EpollingProcess(int i32Epfd)
                 perror("Epoll event error");
                 Close(i32Connfd);
             }
+        }
+    }
+}
+
+void CloseAndDelete(int i32Sockfd, std::set<int> & uUserSockets)
+{
+    printf("Client %d close connection.\n", i32Sockfd);
+    Close(i32Sockfd);
+    uUserSockets.erase(i32Sockfd);
+}
+
+void ReadAndBroadcast(int i32Clientfd, std::set<int> & sUserSockets)
+{
+    char szBuf[1024];
+    ssize_t sstOffset = sprintf(szBuf, "Client %d: ", i32Clientfd);
+    ssize_t sstBytesRead = HandleRead(i32Clientfd, szBuf + sstOffset, 1024 - sstOffset);
+    if (sstBytesRead < 0)
+    {
+        perror("Read error");
+        CloseAndDelete(i32Clientfd, sUserSockets);
+        return;
+    }
+    else if (sstBytesRead == 0)
+    {
+        CloseAndDelete(i32Clientfd, sUserSockets);
+        return;
+    }
+
+    for (auto it = sUserSockets.cbegin(); it != sUserSockets.cend(); ++it)
+    {
+        if (*it == i32Clientfd)
+        {
+            continue;
+        }
+
+        int sstByteSend = send(*it, szBuf, sstOffset + sstBytesRead, 0);
+        if (sstByteSend < 0)
+        {
+            perror("Send error");
+            CloseAndDelete(*it, sUserSockets);
         }
     }
 }
