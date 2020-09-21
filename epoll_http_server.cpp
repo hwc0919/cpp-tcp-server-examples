@@ -1,6 +1,5 @@
 #include "netutils.h"
 #include <sys/sysinfo.h>
-#include <thread>
 #include <vector>
 
 int main(int argc, char * argv[])
@@ -20,7 +19,7 @@ int main(int argc, char * argv[])
     for (int i = 0; i < i32NumThreads; ++i)
     {
         vecEpfdPool.emplace_back(epoll_create(EPOLL_SIZE));
-        vecThreadPool.emplace_back([&, i] { EpollingProcess(vecEpfdPool[i]); });
+        vecThreadPool.emplace_back([&, i] { RunEpollHttpThread(vecEpfdPool[i]); });
     }
 
 #ifdef DEBUG

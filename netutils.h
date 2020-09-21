@@ -71,13 +71,13 @@ void Bind(int i32Af, int i32Sockfd, const char * pcszHost, u_short ui16Port)
     sockaddr_in tSockAddr;
     tSockAddr.sin_family = i32Af;
     tSockAddr.sin_port = htons(ui16Port);
-    if (inet_pton(i32Af, pcszHost, &tSockAddr.sin_addr) < 0)
+    if (inet_pton(i32Af, pcszHost, &tSockAddr.sin_addr) != 1)
     {
         perror("IP set error");
         exit(-1);
     }
 
-    if (bind(i32Sockfd, reinterpret_cast<sockaddr *>(&tSockAddr), sizeof(tSockAddr)) < 0)
+    if (bind(i32Sockfd, reinterpret_cast<sockaddr *>(&tSockAddr), sizeof(tSockAddr)) != 0)
     {
         perror("Bind error");
         exit(-1);
@@ -142,7 +142,7 @@ ssize_t HandleRead(int i32ClientFd, char * szBuf, size_t stBufSize)
     return totBytesRead;
 }
 
-void EpollingProcess(int i32Epfd)
+void RunEpollHttpThread(int i32Epfd)
 {
     char buf[128];
     struct epoll_event atEpEvents[EPOLL_SIZE];
